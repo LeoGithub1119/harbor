@@ -1,0 +1,44 @@
+fullnameOverride: harbor-pg-postgresql-ha
+
+global:
+  postgresql:
+    username: harbor
+    password: "HarborPgPassw0rd!"
+    database: registry
+    repmgrPassword: "HarborRepmgrPassw0rd!"
+  pgpool:
+    adminPassword: "HarborPgpoolAdminPassw0rd!"
+  defaultStorageClass: "csi-cinder"
+
+postgresql:
+  postgresPassword: "HarborPostgresSuperPassw0rd!"
+  maxConnections: 1024
+  resources:
+    requests:
+      cpu: 250m
+      memory: 1Gi
+    limits:
+      cpu: 1
+      memory: 2Gi
+
+pgpool:
+  replicaCount: 2
+  maxPool: 50
+  childMaxConnections: 256
+  resources:
+    requests:
+      cpu: 250m
+      memory: 512Mi
+    limits:
+      cpu: 1
+      memory: 1Gi
+  livenessProbe:
+    timeoutSeconds: 5
+  readinessProbe:
+    timeoutSeconds: 5
+
+persistence:
+  size: "20Gi"
+
+metrics:
+  enabled: true
