@@ -963,7 +963,7 @@ database:
       #    memory: 128Mi
       #    cpu: 100m
   external:
-    host: "harbor-pg-postgresql-ha-postgresql.harbor.svc.cluster.local"
+    host: "harbor-pg-primary-fixed.harbor.svc.cluster.local"
     port: "5432"
     username: "harbor"
     password: "HarborPgPassw0rd!"

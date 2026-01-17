@@ -1,0 +1,101 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: harbor-mm-relay
+  namespace: harbor
+data:
+  app.py: |
+    import os, json, time
+    import requests
+    from fastapi import FastAPI, Request
+
+    app = FastAPI()
+    MM = os.environ["MM_WEBHOOK_URL"]
+
+    def build_text(p: dict) -> str:
+      t = p.get("type", "UNKNOWN")
+      op = p.get("operator", "unknown")
+      repo = (p.get("event_data", {}) or {}).get("repository", {}) or {}
+      repo_full = repo.get("repo_full_name") or f'{repo.get("namespace","")}/{repo.get("name","")}'
+      res0 = ((p.get("event_data", {}) or {}).get("resources") or [{}])[0] or {}
+      url = res0.get("resource_url","")
+      digest = res0.get("digest","")
+      tag = res0.get("tag","")
+      occur = p.get("occur_at")
+      ts = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(occur)) if isinstance(occur, int) else "n/a"
+
+      return (
+        f" **Harbor event**: `{t}`\n"
+        f"- time: `{ts}`\n"
+        f"- operator: `{op}`\n"
+        f"- repo: `{repo_full}`\n"
+        f"- tag: `{tag}`\n"
+        f"- digest: `{digest}`\n"
+        f"- url: `{url}`"
+      )
+
+    @app.post("/harbor")
+    async def harbor(req: Request):
+      payload = await req.json()
+      text = build_text(payload)
+
+      r = requests.post(MM, json={"text": text}, timeout=10)
+      if r.status_code >= 300:
+        return {"ok": False, "mm_status": r.status_code, "mm_body": r.text}
+
+      return {"ok": True}
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: harbor-mm-relay
+  namespace: harbor
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: harbor-mm-relay
+  template:
+    metadata:
+      labels:
+        app: harbor-mm-relay
+    spec:
+      containers:
+        - name: relay
+          image: python:3.12-slim
+          ports:
+            - containerPort: 8080
+          env:
+            - name: MM_WEBHOOK_URL
+              valueFrom:
+                secretKeyRef:
+                  name: mm-webhook
+                  key: MM_WEBHOOK_URL
+          command: ["/bin/sh","-lc"]
+          args:
+            - |
+              pip install --no-cache-dir fastapi uvicorn requests &&
+              python -c "print('relay starting')" &&
+              uvicorn app:app --host 0.0.0.0 --port 8080
+          volumeMounts:
+            - name: code
+              mountPath: /app
+          workingDir: /app
+      volumes:
+        - name: code
+          configMap:
+            name: harbor-mm-relay
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: harbor-mm-relay
+  namespace: harbor
+spec:
+  selector:
+    app: harbor-mm-relay
+  ports:
+    - name: http
+      port: 8080
+      targetPort: 8080
